@@ -912,6 +912,7 @@ class MusicService :
             moe.rukamori.archivetune.together.TogetherSessionState.Idle,
         )
     private var togetherServer: moe.rukamori.archivetune.together.TogetherServer? = null
+    private var togetherLanDiscoveryResponder: moe.rukamori.archivetune.together.TogetherLanDiscovery.Responder? = null
     private var togetherOnlineHost: moe.rukamori.archivetune.together.TogetherOnlineHost? = null
     private var togetherClient: moe.rukamori.archivetune.together.TogetherClient? = null
     private var togetherBroadcastJob: Job? = null
@@ -1217,7 +1218,7 @@ class MusicService :
     override fun onUpdateNotificationAsync(
         session: MediaSession,
         startInForegroundRequired: Boolean,
-    ): com.google.common.util.concurrent.ListenableFuture<Void> {
+    ): com.google.common.util.concurrent.ListenableFuture<Void?> {
         if (!isTogetherSessionActive()) {
             return super.onUpdateNotificationAsync(session, startInForegroundRequired)
         }
@@ -5022,6 +5023,13 @@ class MusicService :
                     .encode(joinInfo)
 
             togetherServer = server
+            val joinCode =
+                moe.rukamori.archivetune.together.TogetherLanDiscovery
+                    .generateCode()
+            togetherLanDiscoveryResponder =
+                moe.rukamori.archivetune.together.TogetherLanDiscovery
+                    .Responder(this@MusicService, joinCode, joinLink)
+                    .also { it.start(ioScope) }
             scheduleTogetherHostInactivityTimeout(sessionId)
 
             scope.launch(SilentHandler) {
@@ -5033,6 +5041,7 @@ class MusicService :
                         port = boundPort,
                         settings = settings,
                         roomState = null,
+                        joinCode = joinCode,
                     )
             }
 
@@ -5248,6 +5257,12 @@ class MusicService :
         displayName: String,
     ) {
         ensureScopesActive()
+        if (moe.rukamori.archivetune.together.TogetherLanDiscovery
+                .isCode(rawLink)
+        ) {
+            joinTogetherByLanCode(rawLink.trim(), displayName)
+            return
+        }
         val joinInfo =
             moe.rukamori.archivetune.together.TogetherLink
                 .decode(rawLink)
@@ -5451,6 +5466,36 @@ class MusicService :
                 }
 
             client.connect(joinInfo, displayName.trim().ifBlank { getString(R.string.together_role_guest) })
+        }
+    }
+
+    private fun joinTogetherByLanCode(
+        code: String,
+        displayName: String,
+    ) {
+        scope.launch(SilentHandler) {
+            togetherSessionState.value =
+                moe.rukamori.archivetune.together.TogetherSessionState
+                    .Joining(code)
+        }
+        ioScope.launch(SilentHandler) {
+            stopTogetherInternal()
+            val joinInfo =
+                moe.rukamori.archivetune.together.TogetherLanDiscovery
+                    .discover(this@MusicService, code)
+            if (joinInfo == null) {
+                scope.launch(SilentHandler) {
+                    togetherSessionState.value =
+                        moe.rukamori.archivetune.together.TogetherSessionState.Error(
+                            message = getString(R.string.together_lan_code_not_found, code),
+                            recoverable = true,
+                        )
+                }
+                return@launch
+            }
+            scope.launch(SilentHandler) {
+                joinTogether(joinInfo.toDeepLink(), displayName)
+            }
         }
     }
 
@@ -6424,6 +6469,9 @@ class MusicService :
         } catch (_: Exception) {
         }
         togetherOnlineHost = null
+
+        runCatching { togetherLanDiscoveryResponder?.stop() }
+        togetherLanDiscoveryResponder = null
 
         try {
             togetherServer?.stop()

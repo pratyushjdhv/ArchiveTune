@@ -1338,12 +1338,13 @@
     <string name="together_allow_guests_control">Guests can control playback</string>
     <string name="together_require_approval">Require approval</string>
     <string name="together_session_running">Listen Together session is running</string>
+    <string name="together_lan_code_not_found">No session with code %1$s found on this network. Make sure both phones are on the same Wi-Fi or hotspot.</string>
     <string name="together_silent_host">Remote only (no sound on this phone)</string>
     <string name="together_lan">LAN</string>
     <string name="together_online">Online</string>
     <string name="together_join_link">Link</string>
     <string name="together_join_code">Code</string>
-    <string name="together_join_link_hint">Paste a join link or code</string>
+    <string name="together_join_link_hint">Enter the 6-digit code or paste a join link</string>
     <string name="together_join_code_hint">Enter a session code</string>
     <string name="start_session">Start session</string>
     <string name="join_session">Join session</string>

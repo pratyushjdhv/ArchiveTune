@@ -37,6 +37,7 @@ import moe.rukamori.archivetune.together.MusicTogetherPreferences
 import moe.rukamori.archivetune.together.MusicTogetherSessionActionsUseCase
 import moe.rukamori.archivetune.together.MusicTogetherSnapshot
 import moe.rukamori.archivetune.together.ObserveMusicTogetherStateUseCase
+import moe.rukamori.archivetune.together.TogetherLanDiscovery
 import moe.rukamori.archivetune.together.TogetherLink
 import moe.rukamori.archivetune.together.TogetherRole
 import moe.rukamori.archivetune.together.TogetherRoomSettings
@@ -680,11 +681,12 @@ class MusicTogetherViewModel
             val sessionShare =
                 when (state) {
                     is TogetherSessionState.Hosting -> {
+                        val code = state.joinCode
                         MusicTogetherSessionShareUiModel(
-                            labelResId = R.string.session_link,
-                            value = state.joinLink,
-                            maxLines = 3,
-                            isCode = false,
+                            labelResId = if (code != null) R.string.session_code else R.string.session_link,
+                            value = code ?: state.joinLink,
+                            maxLines = if (code != null) 2 else 3,
+                            isCode = code != null,
                             addressHint = state.localAddressHint?.takeIf { it.isNotBlank() }?.let { "$it:${state.port}" },
                         )
                     }
@@ -722,7 +724,7 @@ class MusicTogetherViewModel
                 if (joinOnline) {
                     joinInput.trim().isNotBlank()
                 } else {
-                    TogetherLink.decode(joinInput) != null
+                    TogetherLink.decode(joinInput) != null || TogetherLanDiscovery.isCode(joinInput)
                 }
             val join =
                 MusicTogetherJoinUiModel(

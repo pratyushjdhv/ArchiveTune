@@ -162,6 +162,7 @@ import kotlinx.coroutines.isActive
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.together.TogetherLanDiscovery
 import moe.rukamori.archivetune.together.TogetherLink
 import moe.rukamori.archivetune.ui.component.TextFieldDialog
 import moe.rukamori.archivetune.ui.player.EditorialMorphShape
@@ -1887,7 +1888,7 @@ private fun JoinSetup(
     val colors = MaterialTheme.colorScheme
     val input = join.input.trim()
     val inputEnabled = !join.disabled && !join.joining && !join.joined && !join.waitingApproval
-    val showInvalid = !join.onlineMode && input.isNotEmpty() && TogetherLink.decode(input) == null
+    val showInvalid = !join.onlineMode && input.isNotEmpty() && TogetherLink.decode(input) == null && !TogetherLanDiscovery.isCode(input)
 
     Column(verticalArrangement = Arrangement.spacedBy(TogetherSpacing.md)) {
         ConnectedChoice(
@@ -2620,7 +2621,7 @@ private fun MusicTogetherDialogs(
                     if (dialog.onlineMode) {
                         it.trim().isNotBlank()
                     } else {
-                        TogetherLink.decode(it) != null
+                        TogetherLink.decode(it) != null || TogetherLanDiscovery.isCode(it)
                     }
                 },
                 onDone = viewModel::submitJoinInput,

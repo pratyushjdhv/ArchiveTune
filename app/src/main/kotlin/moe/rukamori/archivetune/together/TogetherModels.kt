@@ -73,6 +73,7 @@ sealed class TogetherSessionState {
         val port: Int,
         val settings: TogetherRoomSettings,
         val roomState: TogetherRoomState?,
+        val joinCode: String? = null,
     ) : TogetherSessionState()
 
     data class HostingOnline(
