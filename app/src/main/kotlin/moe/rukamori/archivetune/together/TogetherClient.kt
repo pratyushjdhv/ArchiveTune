@@ -130,10 +130,6 @@ class TogetherClient(
         HttpClient(io.ktor.client.engine.cio.CIO) {
             engine {
                 requestTimeout = 0
-                endpoint {
-                    connectTimeout = 15_000
-                    connectAttempts = 2
-                }
             }
             install(WebSockets) {
                 pingIntervalMillis = 25_000
