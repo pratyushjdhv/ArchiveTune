@@ -283,6 +283,7 @@ val TogetherDefaultPortKey = intKey("together_default_port")
 val TogetherAllowGuestsToAddTracksKey = booleanKey("together_allow_guests_add_tracks")
 val TogetherAllowGuestsToControlPlaybackKey = booleanKey("together_allow_guests_control_playback")
 val TogetherRequireHostApprovalToJoinKey = booleanKey("together_require_host_approval_to_join")
+val TogetherSilentHostKey = booleanKey("together_silent_host")
 val TogetherLastJoinLinkKey = stringKey("together_last_join_link")
 val TogetherWelcomeShownKey = booleanKey("together_welcome_shown")
 

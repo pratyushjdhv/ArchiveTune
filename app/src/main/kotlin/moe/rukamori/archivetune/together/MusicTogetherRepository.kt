@@ -25,6 +25,7 @@ import moe.rukamori.archivetune.constants.TogetherDefaultPortKey
 import moe.rukamori.archivetune.constants.TogetherDisplayNameKey
 import moe.rukamori.archivetune.constants.TogetherLastJoinLinkKey
 import moe.rukamori.archivetune.constants.TogetherRequireHostApprovalToJoinKey
+import moe.rukamori.archivetune.constants.TogetherSilentHostKey
 import moe.rukamori.archivetune.constants.TogetherWelcomeShownKey
 import moe.rukamori.archivetune.playback.MusicService
 import moe.rukamori.archivetune.utils.dataStore
@@ -42,6 +43,7 @@ data class MusicTogetherPreferences(
     val allowGuestsToAddTracks: Boolean,
     val allowGuestsToControlPlayback: Boolean,
     val requireHostApprovalToJoin: Boolean,
+    val silentHost: Boolean = false,
     val lastJoinLink: String,
     val welcomeShown: Boolean,
 )
@@ -71,6 +73,7 @@ class MusicTogetherRepository
                         allowGuestsToAddTracks = preferences[TogetherAllowGuestsToAddTracksKey] ?: true,
                         allowGuestsToControlPlayback = preferences[TogetherAllowGuestsToControlPlaybackKey] ?: false,
                         requireHostApprovalToJoin = preferences[TogetherRequireHostApprovalToJoinKey] ?: false,
+                        silentHost = preferences[TogetherSilentHostKey] ?: false,
                         lastJoinLink = preferences[TogetherLastJoinLinkKey] ?: "",
                         welcomeShown = preferences[TogetherWelcomeShownKey] ?: false,
                     )
@@ -113,6 +116,12 @@ class MusicTogetherRepository
         suspend fun setRequireHostApprovalToJoin(value: Boolean) {
             context.dataStore.edit { preferences ->
                 preferences[TogetherRequireHostApprovalToJoinKey] = value
+            }
+        }
+
+        suspend fun setSilentHost(value: Boolean) {
+            context.dataStore.edit { preferences ->
+                preferences[TogetherSilentHostKey] = value
             }
         }
 

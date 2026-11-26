@@ -61,6 +61,10 @@ class UpdateMusicTogetherPreferencesUseCase
             repository.setRequireHostApprovalToJoin(value)
         }
 
+        suspend fun setSilentHost(value: Boolean) {
+            repository.setSilentHost(value)
+        }
+
         suspend fun setLastJoinLink(value: String) {
             repository.setLastJoinLink(value)
         }

@@ -1779,22 +1779,29 @@ private fun RoomRulesGroup(
             iconResId = R.drawable.playlist_add,
             titleResId = R.string.together_allow_guests_add,
             checked = host.allowGuestsToAddTracks,
-            shape = segmentShape(index = 0, count = 3),
+            shape = segmentShape(index = 0, count = 4),
             onCheckedChange = viewModel::setAllowGuestsToAddTracks,
         )
         RuleRow(
             iconResId = R.drawable.play,
             titleResId = R.string.together_allow_guests_control,
             checked = host.allowGuestsToControlPlayback,
-            shape = segmentShape(index = 1, count = 3),
+            shape = segmentShape(index = 1, count = 4),
             onCheckedChange = viewModel::setAllowGuestsToControlPlayback,
         )
         RuleRow(
             iconResId = R.drawable.lock,
             titleResId = R.string.together_require_approval,
             checked = host.requireHostApprovalToJoin,
-            shape = segmentShape(index = 2, count = 3),
+            shape = segmentShape(index = 2, count = 4),
             onCheckedChange = viewModel::setRequireHostApprovalToJoin,
+        )
+        RuleRow(
+            iconResId = R.drawable.volume_off,
+            titleResId = R.string.together_silent_host,
+            checked = host.silentHost,
+            shape = segmentShape(index = 3, count = 4),
+            onCheckedChange = viewModel::setSilentHost,
         )
     }
 }

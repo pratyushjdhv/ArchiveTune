@@ -1337,6 +1337,7 @@
     <string name="together_allow_guests_add">Guests can add songs</string>
     <string name="together_allow_guests_control">Guests can control playback</string>
     <string name="together_require_approval">Require approval</string>
+    <string name="together_silent_host">Remote only (no sound on this phone)</string>
     <string name="together_lan">LAN</string>
     <string name="together_online">Online</string>
     <string name="together_join_link">Link</string>

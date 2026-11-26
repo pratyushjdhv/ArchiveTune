@@ -204,6 +204,7 @@ import moe.rukamori.archivetune.constants.SleepTimerFinishSongKey
 import moe.rukamori.archivetune.constants.SmartTrimmerKey
 import moe.rukamori.archivetune.constants.StopMusicOnTaskClearKey
 import moe.rukamori.archivetune.constants.TogetherClientIdKey
+import moe.rukamori.archivetune.constants.TogetherSilentHostKey
 import moe.rukamori.archivetune.constants.UsbBitPerfectDriver
 import moe.rukamori.archivetune.constants.UsbBitPerfectDriverKey
 import moe.rukamori.archivetune.constants.UsbBitPerfectFixedVolumeKey
@@ -654,6 +655,13 @@ class MusicService :
     private val audioFocusVolumeFactor = MutableStateFlow(1f)
     private val sleepTimerVolumeFactor = MutableStateFlow(1f)
     val recapAudioMuted = MutableStateFlow(false)
+
+    /**
+     * True while this device hosts a Listen Together room with "Remote only" enabled. The host
+     * keeps playing (its position drives every guest) but at zero volume, so it acts as a remote
+     * control while the guests produce the audio.
+     */
+    private val togetherHostMuted = MutableStateFlow(false)
     val recapQueueActive = MutableStateFlow(false)
     private var recapAudioQueue: Queue? = null
     private var effectiveVolumeRampJob: Job? = null
@@ -1482,13 +1490,27 @@ class MusicService :
             playerVolume,
             normalizeFactor,
             audioFocusVolumeFactor,
-            recapAudioMuted,
+            combine(recapAudioMuted, togetherHostMuted) { recapMuted, hostMuted -> recapMuted || hostMuted },
             sleepTimerVolumeFactor,
         ) { playerVolume, normalizeFactor, audioFocusVolumeFactor, _, _ ->
             calculateEffectivePlayerVolume(playerVolume, normalizeFactor, audioFocusVolumeFactor)
         }.collectLatest(scope) { finalVolume ->
             updateEffectiveVolume(finalVolume)
         }
+
+        combine(
+            togetherSessionState,
+            dataStore.data.map { it[TogetherSilentHostKey] ?: false }.distinctUntilChanged(),
+        ) { state, silentHost ->
+            silentHost &&
+                (
+                    state is moe.rukamori.archivetune.together.TogetherSessionState.Hosting ||
+                        state is moe.rukamori.archivetune.together.TogetherSessionState.HostingOnline
+                )
+        }.distinctUntilChanged()
+            .collectLatest(scope) { muted ->
+                togetherHostMuted.value = muted
+            }
 
         playerVolume.debounce(1000).collect(ioScope) { volume ->
             dataStore.edit { settings ->
@@ -2746,7 +2768,7 @@ class MusicService :
         val safeAudioFocusVolumeFactor =
             audioFocusVolumeFactor.takeIf { it.isFinite() }?.coerceIn(MIN_AUDIO_FOCUS_VOLUME_FACTOR, 1f) ?: 1f
         val safeSleepTimerVolumeFactor = sleepTimerVolumeFactor.value.takeIf { it.isFinite() }?.coerceIn(0f, 1f) ?: 1f
-        return if (recapAudioMuted.value) 0f else
+        return if (recapAudioMuted.value || togetherHostMuted.value) 0f else
             (safePlayerVolume * safeNormalizeFactor * safeAudioFocusVolumeFactor * safeSleepTimerVolumeFactor)
                 .coerceIn(0f, maxSafeGainFactor)
     }

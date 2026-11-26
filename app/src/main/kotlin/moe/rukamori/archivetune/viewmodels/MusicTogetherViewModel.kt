@@ -186,6 +186,7 @@ data class MusicTogetherHostUiModel(
     val allowGuestsToAddTracks: Boolean,
     val allowGuestsToControlPlayback: Boolean,
     val requireHostApprovalToJoin: Boolean,
+    val silentHost: Boolean,
     val visible: Boolean,
     val startEnabled: Boolean,
     val loading: Boolean,
@@ -471,6 +472,12 @@ class MusicTogetherViewModel
             pushSettingsToActiveSession(approval = value)
         }
 
+        fun setSilentHost(value: Boolean) {
+            viewModelScope.launch(Dispatchers.IO) {
+                updatePreferences.setSilentHost(value)
+            }
+        }
+
         fun startSession() {
             val model = successModel() ?: return
             if (!model.host.startEnabled) return
@@ -705,6 +712,7 @@ class MusicTogetherViewModel
                     allowGuestsToAddTracks = preferences.allowGuestsToAddTracks,
                     allowGuestsToControlPlayback = preferences.allowGuestsToControlPlayback,
                     requireHostApprovalToJoin = preferences.requireHostApprovalToJoin,
+                    silentHost = preferences.silentHost,
                     visible = !isJoinedAsGuest,
                     startEnabled = !isCreatingSessionLoading && !isJoining && !isHosting && state !is TogetherSessionState.Joined,
                     loading = isCreatingSessionLoading,
