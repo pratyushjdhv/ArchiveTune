@@ -4884,17 +4884,6 @@ class MusicService :
                 java.util.UUID
                     .randomUUID()
                     .toString()
-            val joinInfo =
-                moe.rukamori.archivetune.together.TogetherJoinInfo(
-                    host = localIp ?: "127.0.0.1",
-                    port = port,
-                    sessionId = sessionId,
-                    sessionKey = sessionKey,
-                )
-            val joinLink =
-                moe.rukamori.archivetune.together.TogetherLink
-                    .encode(joinInfo)
-
             val server =
                 moe.rukamori.archivetune.together.TogetherServer(
                     scope = ioScope,
@@ -4911,7 +4900,34 @@ class MusicService :
                 }
             }
 
-            server.start(port)
+            val boundPort =
+                try {
+                    server.start(port)
+                } catch (cancel: kotlinx.coroutines.CancellationException) {
+                    throw cancel
+                } catch (t: Throwable) {
+                    Timber.tag("Together").e(t, "Unable to start Listen Together server on port %d", port)
+                    scope.launch(SilentHandler) {
+                        togetherSessionState.value =
+                            moe.rukamori.archivetune.together.TogetherSessionState.Error(
+                                message = t.message ?: getString(R.string.network_unavailable),
+                                recoverable = true,
+                            )
+                    }
+                    return@launch
+                }
+
+            val joinInfo =
+                moe.rukamori.archivetune.together.TogetherJoinInfo(
+                    host = localIp ?: "127.0.0.1",
+                    port = boundPort,
+                    sessionId = sessionId,
+                    sessionKey = sessionKey,
+                )
+            val joinLink =
+                moe.rukamori.archivetune.together.TogetherLink
+                    .encode(joinInfo)
+
             togetherServer = server
             scheduleTogetherHostInactivityTimeout(sessionId)
 
@@ -4921,7 +4937,7 @@ class MusicService :
                         sessionId = sessionId,
                         joinLink = joinLink,
                         localAddressHint = localIp,
-                        port = port,
+                        port = boundPort,
                         settings = settings,
                         roomState = null,
                     )
@@ -8940,8 +8956,14 @@ class MusicService :
         }
         unregisterBluetoothReceiver()
         unregisterMuteRecoveryObserver()
+        // scopeJob is cancelled further down in onDestroy, so a coroutine launched on `scope`
+        // here never gets to run. That left the Listen Together server bound to its port after
+        // the service died, and the next attempt to host crashed with "Address already in use".
+        // Shut it down on a scope that outlives the service instead.
         try {
-            scope.launch { stopTogetherInternal() }
+            CoroutineScope(SupervisorJob() + Dispatchers.IO).launch(SilentHandler) {
+                stopTogetherInternal()
+            }
         } catch (_: Exception) {
         }
         try {
@@ -9042,7 +9064,7 @@ class MusicService :
                         reason = "task_removed_host_inactive",
                         force = true,
                     )
-                    runCatching { scope.launch { stopTogetherInternal() } }
+                    runCatching { CoroutineScope(SupervisorJob() + Dispatchers.IO).launch(SilentHandler) { stopTogetherInternal() } }
                     runCatching { togetherSessionState.value = moe.rukamori.archivetune.together.TogetherSessionState.Idle }
                     stopSelf()
                     return

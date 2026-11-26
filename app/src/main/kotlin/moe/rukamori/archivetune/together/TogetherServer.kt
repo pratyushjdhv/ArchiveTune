@@ -8,8 +8,10 @@
 package moe.rukamori.archivetune.together
 
 import io.ktor.server.application.install
+import io.ktor.server.application.serverConfig
 import io.ktor.server.cio.CIO
 import io.ktor.server.engine.EmbeddedServer
+import io.ktor.server.engine.connector
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.routing.routing
 import io.ktor.server.websocket.WebSockets
@@ -20,10 +22,15 @@ import io.ktor.websocket.WebSocketSession
 import io.ktor.websocket.close
 import io.ktor.websocket.readText
 import io.ktor.websocket.send
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.ClosedReceiveChannelException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import java.net.BindException
+import java.net.InetSocketAddress
+import java.net.ServerSocket
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
@@ -74,6 +81,7 @@ class TogetherServer(
     private val mutex = Mutex()
     private var settings: TogetherRoomSettings = initialSettings
     private var engine: EmbeddedServer<*, *>? = null
+    private var boundPort: Int? = null
     private var authorityParticipantId: String? = null
 
     @Volatile
@@ -95,26 +103,93 @@ class TogetherServer(
 
     suspend fun currentSettings(): TogetherRoomSettings = mutex.withLock { settings }
 
-    suspend fun start(port: Int) {
+    /**
+     * Starts the LAN server and returns the port it is actually listening on.
+     *
+     * If [preferredPort] is taken (for example by a server from a previous session that was not
+     * shut down yet, or by another app) a free port is chosen instead. The join link carries the
+     * port, so guests are not affected by the fallback.
+     *
+     * Bind failures are reported by throwing from this function. They must never escape through
+     * Ktor's own server coroutine, because that coroutine is not a child of the caller and an
+     * exception there goes straight to the default uncaught exception handler and crashes the app.
+     */
+    suspend fun start(preferredPort: Int): Int {
         mutex.withLock {
-            if (engine != null) return
-            engine =
-                embeddedServer(CIO, port = port, host = "0.0.0.0") {
-                    install(WebSockets)
-                    routing {
-                        webSocket("/together") {
-                            handleClient()
-                        }
-                    }
-                }.also { it.start(wait = false) }
+            boundPort?.let { if (engine != null) return it }
+
+            val candidates =
+                buildList {
+                    if (preferredPort in 1..65535 && isPortAvailable(preferredPort)) add(preferredPort)
+                    add(0)
+                }
+
+            var lastError: Throwable? = null
+            for (candidate in candidates) {
+                val server =
+                    embeddedServer(
+                        factory = CIO,
+                        rootConfig =
+                            serverConfig {
+                                parentCoroutineContext =
+                                    CoroutineExceptionHandler { _, throwable ->
+                                        onEvent?.invoke(TogetherServerEvent.Error("Together server failed", throwable))
+                                    }
+                                module {
+                                    install(WebSockets)
+                                    routing {
+                                        webSocket("/together") {
+                                            handleClient()
+                                        }
+                                    }
+                                }
+                            },
+                        configure = {
+                            connector {
+                                host = "0.0.0.0"
+                                port = candidate
+                            }
+                        },
+                    )
+                try {
+                    server.startSuspend(wait = false)
+                    val actualPort =
+                        server.engine
+                            .resolvedConnectors()
+                            .firstOrNull()
+                            ?.port
+                            ?.takeIf { it > 0 }
+                            ?: candidate
+                    engine = server
+                    boundPort = actualPort
+                    return actualPort
+                } catch (cancel: CancellationException) {
+                    runCatching { server.stop(0, 500) }
+                    throw cancel
+                } catch (t: Throwable) {
+                    lastError = t
+                    runCatching { server.stop(0, 500) }
+                }
+            }
+            throw lastError ?: BindException("Unable to start Listen Together server")
         }
     }
+
+    private fun isPortAvailable(port: Int): Boolean =
+        runCatching {
+            ServerSocket().use { socket ->
+                socket.reuseAddress = true
+                socket.bind(InetSocketAddress(port))
+            }
+            true
+        }.getOrDefault(false)
 
     suspend fun stop() {
         val eng =
             mutex.withLock {
                 val e = engine ?: return
                 engine = null
+                boundPort = null
                 e
             }
 
@@ -123,7 +198,7 @@ class TogetherServer(
         }
         clients.clear()
 
-        runCatching { eng.stop(1000, 2000) }
+        runCatching { eng.stopSuspend(500, 1500) }
     }
 
     suspend fun updateSettings(newSettings: TogetherRoomSettings) {
