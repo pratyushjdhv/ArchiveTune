@@ -9357,7 +9357,11 @@ class MusicService :
             stopMusicOnTaskClearEnabled: Boolean,
             isHostSessionActive: Boolean,
             isPlaybackInactive: Boolean,
-        ): Boolean = (isHostSessionActive && isPlaybackInactive) || stopMusicOnTaskClearEnabled
+        ): Boolean =
+            // A Listen Together room is only ended explicitly (Leave) or by the no-guests
+            // inactivity timeout. Swiping the app away must not close it: the host may well have
+            // nothing playing yet, e.g. while waiting for the guest to connect.
+            stopMusicOnTaskClearEnabled && !isHostSessionActive
 
         const val ROOT = "root"
         const val HOME = "home"
@@ -9395,7 +9399,7 @@ class MusicService :
         private const val TOGETHER_NOTIFICATION_CHANNEL_ID = "together_room_events"
         private const val TOGETHER_PARTICIPANT_NOTIFICATION_ID = 891
         private const val TOGETHER_INACTIVITY_NOTIFICATION_ID = 892
-        private const val TOGETHER_HOST_INACTIVITY_TIMEOUT_MS = 10 * 60 * 1000L
+        private const val TOGETHER_HOST_INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000L
         const val ERROR_CODE_NO_STREAM = 1000001
         private const val PLAYBACK_FORMAT_ID_METADATA_KEY = "archivetune_playback_format_id"
         const val CHUNK_LENGTH = 8 * 1024 * 1024L
