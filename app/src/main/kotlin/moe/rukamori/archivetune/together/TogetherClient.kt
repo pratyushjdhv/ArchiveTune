@@ -119,6 +119,28 @@ class TogetherClient(
             }
         }
 
+    /**
+     * Client for LAN rooms. The app's network security config forbids cleartext traffic, and
+     * OkHttp enforces that policy, so a plain ws:// connection to a host on the local network was
+     * always refused (the wss:// retry then failed with "Unable to parse TLS packet header").
+     * Ktor's CIO engine opens the socket itself and is not subject to that policy. The LAN host
+     * only serves plain WebSocket, and the room is protected by its session key.
+     */
+    private val lanClient by lazy {
+        HttpClient(io.ktor.client.engine.cio.CIO) {
+            engine {
+                requestTimeout = 0
+                endpoint {
+                    connectTimeout = 15_000
+                    connectAttempts = 2
+                }
+            }
+            install(WebSockets) {
+                pingIntervalMillis = 25_000
+            }
+        }
+    }
+
     private val scope = CoroutineScope(externalScope.coroutineContext + SupervisorJob())
 
     private val _state = MutableStateFlow<TogetherClientState>(TogetherClientState.Idle)
@@ -141,15 +163,16 @@ class TogetherClient(
             disconnect()
             _state.value = TogetherClientState.Connecting(joinInfo)
 
-            val wsUrl = joinInfo.toWebSocketUrl()
-            val urls = listOfNotNull(wsUrl, alternateWebSocketSchemeOrNull(wsUrl)).distinct()
+            // LAN hosts never serve TLS, so there is nothing to gain from a wss:// retry; it only
+            // replaced the real error with a confusing TLS one.
+            val urls = listOf(joinInfo.toWebSocketUrl())
 
             val token = normalizedBearerToken
 
             var lastError: Throwable? = null
             for (candidate in urls) {
                 try {
-                    client.webSocket(
+                    lanClient.webSocket(
                         urlString = candidate,
                         request = {
                             if (token != null) header("Authorization", "Bearer $token")
