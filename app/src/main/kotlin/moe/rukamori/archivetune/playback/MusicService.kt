@@ -115,6 +115,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.distinctUntilChangedBy
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
@@ -1139,9 +1140,11 @@ class MusicService :
         return NotificationCompat
             .Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.small_icon)
-            .setContentTitle(getString(R.string.music_player))
-            .setContentText(getString(R.string.app_name))
-            .setContentIntent(contentIntent)
+            .setContentTitle(
+                if (isTogetherSessionActive()) getString(R.string.music_together) else getString(R.string.music_player),
+            ).setContentText(
+                if (isTogetherSessionActive()) getString(R.string.together_session_running) else getString(R.string.app_name),
+            ).setContentIntent(contentIntent)
             .setCategory(Notification.CATEGORY_SERVICE)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(true)
@@ -1186,6 +1189,64 @@ class MusicService :
             }
         }
         enterForegroundForStartCommand()
+    }
+
+    /**
+     * True while this device is in (or connecting to) a Listen Together room, as host or guest.
+     */
+    private fun isTogetherSessionActive(): Boolean =
+        when (togetherSessionState.value) {
+            is moe.rukamori.archivetune.together.TogetherSessionState.Hosting,
+            is moe.rukamori.archivetune.together.TogetherSessionState.HostingOnline,
+            is moe.rukamori.archivetune.together.TogetherSessionState.Joining,
+            is moe.rukamori.archivetune.together.TogetherSessionState.JoiningOnline,
+            is moe.rukamori.archivetune.together.TogetherSessionState.Joined,
+            -> true
+
+            else -> false
+        }
+
+    /**
+     * Media3 only keeps the service in the foreground while something is playing, and drops the
+     * notification entirely when the queue is empty. A Listen Together room has to survive the app
+     * being minimised even when nothing is playing yet (or playback is paused), otherwise Android
+     * destroys the service and the room closes. While a room is active, keep the service in the
+     * foreground: with the media notification when there is one, otherwise with a plain
+     * "Listen Together" notification.
+     */
+    override fun onUpdateNotificationAsync(
+        session: MediaSession,
+        startInForegroundRequired: Boolean,
+    ): com.google.common.util.concurrent.ListenableFuture<Void> {
+        if (!isTogetherSessionActive()) {
+            return super.onUpdateNotificationAsync(session, startInForegroundRequired)
+        }
+        if (!::player.isInitialized || !hasResumablePlaybackNotification()) {
+            enterForegroundForStartCommand()
+            return com.google.common.util.concurrent.Futures
+                .immediateVoidFuture()
+        }
+        return super.onUpdateNotificationAsync(session, true)
+    }
+
+    private fun onTogetherSessionActiveChanged(active: Boolean) {
+        if (active) {
+            cancelIdleStop()
+            ensureForegroundPlaybackService()
+            return
+        }
+        if (!::player.isInitialized || !hasResumablePlaybackNotification()) {
+            runCatching {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                } else {
+                    @Suppress("DEPRECATION")
+                    stopForeground(true)
+                }
+            }
+        }
+        runCatching { triggerNotificationUpdate() }
+        scheduleStopIfIdle()
     }
 
     private fun cancelIdleStop() {
@@ -1510,6 +1571,16 @@ class MusicService :
         }.distinctUntilChanged()
             .collectLatest(scope) { muted ->
                 togetherHostMuted.value = muted
+            }
+
+        togetherSessionState
+            .map { isTogetherSessionActive() }
+            .distinctUntilChanged()
+            // The first value is the initial Idle state; acting on it would tear down a
+            // foreground start that is already in progress.
+            .drop(1)
+            .collectLatest(scope) { active ->
+                onTogetherSessionActiveChanged(active)
             }
 
         playerVolume.debounce(1000).collect(ioScope) { volume ->
